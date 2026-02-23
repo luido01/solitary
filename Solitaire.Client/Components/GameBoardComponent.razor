@@ -1,0 +1,173 @@
+@implements IDisposable
+@inject GameStateStore Store
+
+<div class="toolbar">
+    <div>Score: <strong>@(Store.State?.Score ?? 0)</strong></div>
+    <div>Timer: <strong>@Format(Store.State?.ElapsedTime ?? TimeSpan.Zero)</strong></div>
+    <button @onclick="Draw">Draw</button>
+    <button @onclick="Undo">Undo</button>
+    <button @onclick="NewGame">New Game</button>
+    <select value="@drawMode" @onchange="OnDrawModeChanged">
+        <option value="1">Draw 1</option>
+        <option value="3">Draw 3</option>
+    </select>
+</div>
+
+@if (Store.State is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="board">
+        <div class="top-row">
+            <div>
+                <div class="label">Stock</div>
+                @if (Stock is not null)
+                {
+                    <div @onclick="Draw"><PileComponent Pile="Stock" AllowStackDrag="false" DragStarted="OnDragStarted" DropRequested="OnDropRequested" /></div>
+                }
+            </div>
+            <div>
+                <div class="label">Waste</div>
+                @if (Waste is not null)
+                {
+                    <PileComponent Pile="Waste" AllowStackDrag="false" DragStarted="OnDragStarted" DropRequested="OnDropRequested" />
+                }
+            </div>
+            <div class="foundations">
+                @foreach (var pile in Foundations)
+                {
+                    <div>
+                        <div class="label">Foundation @(pile.Index + 1)</div>
+                        <PileComponent Pile="pile" AllowStackDrag="false" DragStarted="OnDragStarted" DropRequested="OnDropRequested" />
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="tableau">
+            @foreach (var pile in Tableaus)
+            {
+                <div>
+                    <div class="label">Column @(pile.Index + 1)</div>
+                    <PileComponent Pile="pile" AllowStackDrag="true" DragStarted="OnDragStarted" DropRequested="OnDropRequested" />
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Store.State.IsGameWon)
+    {
+        <div class="modal-backdrop">
+            <div class="modal">
+                <h3>You Win!</h3>
+                <p>Final Score: @Store.State.Score</p>
+                <button @onclick="NewGame">Play Again</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private Card? draggedCard;
+    private int drawMode = 1;
+    private PeriodicTimer? timer;
+    private CancellationTokenSource? cts;
+
+    private Pile? Stock => Store.GetPile(PileType.Stock, 0);
+    private Pile? Waste => Store.GetPile(PileType.Waste, 0);
+    private IEnumerable<Pile> Foundations => Store.State?.Piles.Where(p => p.Type == PileType.Foundation).OrderBy(p => p.Index) ?? [];
+    private IEnumerable<Pile> Tableaus => Store.State?.Piles.Where(p => p.Type == PileType.Tableau).OrderBy(p => p.Index) ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.OnChange += OnStoreChanged;
+        await Store.InitializeAsync();
+
+        drawMode = Store.State?.DrawMode ?? 1;
+
+        cts = new CancellationTokenSource();
+        timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        _ = PollState(cts.Token);
+    }
+
+    private async Task PollState(CancellationToken token)
+    {
+        while (timer is not null && await timer.WaitForNextTickAsync(token))
+        {
+            try
+            {
+                await Store.InitializeAsync();
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    private Task OnDragStarted(Card card)
+    {
+        draggedCard = card;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnDropRequested(Pile targetPile)
+    {
+        if (draggedCard is null || Store.State is null)
+        {
+            return;
+        }
+
+        var sourcePile = Store.State.Piles.FirstOrDefault(p => p.Cards.Any(c => c.Id == draggedCard.Id));
+        if (sourcePile is null || sourcePile.Id == targetPile.Id)
+        {
+            return;
+        }
+
+        try
+        {
+            await Store.MoveAsync(sourcePile.Id, targetPile.Id, draggedCard.Id);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            draggedCard = null;
+        }
+    }
+
+    private async Task Draw()
+    {
+        await Store.DrawAsync();
+    }
+
+    private async Task Undo()
+    {
+        await Store.UndoAsync();
+    }
+
+    private async Task NewGame()
+    {
+        await Store.NewGameAsync(drawMode);
+    }
+
+    private async Task OnDrawModeChanged(ChangeEventArgs args)
+    {
+        drawMode = int.TryParse(args.Value?.ToString(), out var value) ? value : 1;
+        await Store.NewGameAsync(drawMode);
+    }
+
+    private static string Format(TimeSpan elapsed) => $"{elapsed.Hours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+
+    public void Dispose()
+    {
+        Store.OnChange -= OnStoreChanged;
+        cts?.Cancel();
+        timer?.Dispose();
+        cts?.Dispose();
+    }
+}
