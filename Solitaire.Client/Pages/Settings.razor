@@ -1,0 +1,26 @@
+@page "/settings"
+@inject GameStateStore Store
+
+<h1>Settings</h1>
+<div class="settings">
+    <label>Draw Mode</label>
+    <select @bind="drawMode">
+        <option value="1">Draw 1</option>
+        <option value="3">Draw 3</option>
+    </select>
+    <button @onclick="Save">Apply & Start New Game</button>
+</div>
+
+@code {
+    private int drawMode;
+
+    protected override void OnInitialized()
+    {
+        drawMode = Store.State?.DrawMode ?? 1;
+    }
+
+    private async Task Save()
+    {
+        await Store.NewGameAsync(drawMode);
+    }
+}

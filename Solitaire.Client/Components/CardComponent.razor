@@ -1,0 +1,41 @@
+<div class="card @(Card.IsFaceUp ? "face-up" : "face-down")"
+     draggable="@CanDrag"
+     @ondragstart="OnDragStart">
+    @if (Card.IsFaceUp)
+    {
+        <div class="rank">@DisplayRank(Card.Rank)</div>
+        <div class="suit @(Card.IsRed ? "red" : "black")">@DisplaySuit(Card.Suit)</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Card Card { get; set; } = default!;
+    [Parameter] public bool CanDrag { get; set; }
+    [Parameter] public EventCallback<Card> DragStarted { get; set; }
+
+    private Task OnDragStart(DragEventArgs _) => DragStarted.InvokeAsync(Card);
+
+    private static string DisplayRank(Rank rank)
+    {
+        return rank switch
+        {
+            Rank.Ace => "A",
+            Rank.Jack => "J",
+            Rank.Queen => "Q",
+            Rank.King => "K",
+            _ => ((int)rank).ToString()
+        };
+    }
+
+    private static string DisplaySuit(Suit suit)
+    {
+        return suit switch
+        {
+            Suit.Hearts => "♥",
+            Suit.Diamonds => "♦",
+            Suit.Clubs => "♣",
+            Suit.Spades => "♠",
+            _ => string.Empty
+        };
+    }
+}

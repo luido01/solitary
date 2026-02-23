@@ -1,0 +1,43 @@
+<div class="pile @Pile.Type.ToString().ToLower()"
+     @ondragover:preventDefault
+     @ondrop="HandleDrop">
+    @if (Pile.Cards.Count == 0)
+    {
+        <div class="empty-slot"></div>
+    }
+
+    @for (var i = 0; i < Pile.Cards.Count; i++)
+    {
+        var card = Pile.Cards[i];
+        var isTop = i == Pile.Cards.Count - 1;
+        <div class="card-wrap" style="top:@(Pile.Type == PileType.Tableau ? i * 24 : 0)px">
+            <CardComponent Card="card" CanDrag="@(CanDragCard(card, isTop))" DragStarted="OnDragStarted" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Pile Pile { get; set; } = default!;
+    [Parameter] public bool AllowStackDrag { get; set; } = true;
+    [Parameter] public EventCallback<Pile> DropRequested { get; set; }
+    [Parameter] public EventCallback<Card> DragStarted { get; set; }
+
+    private Task HandleDrop() => DropRequested.InvokeAsync(Pile);
+
+    private bool CanDragCard(Card card, bool isTop)
+    {
+        if (!card.IsFaceUp)
+        {
+            return false;
+        }
+
+        if (Pile.Type == PileType.Tableau)
+        {
+            return AllowStackDrag;
+        }
+
+        return isTop;
+    }
+
+    private Task OnDragStarted(Card card) => DragStarted.InvokeAsync(card);
+}
